@@ -1,0 +1,5 @@
+database:
+  user: DBUSERNAME
+  password: DBUSERPASS
+  host: DBHOST
+  database: DBNAME
