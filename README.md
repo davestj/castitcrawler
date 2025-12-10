@@ -57,6 +57,10 @@ database:
 nohup ./castitcrawler.py --live-run --fetch-status > ./icecast-crawl-$(date +%Y%m%d).log 2>&1 &
 ```
 
+## Sandbox testing
+
+See `SANDBOX_TESTING.md` for a step-by-step Docker-based checklist that spins up MySQL, builds a lightweight crawler image, and exercises dry-run and limited live-run paths without touching production resources.
+
 ## Data Sanitization & Verification
 
 Use the sanitizer script to clean and verify data prior to database insertion:
