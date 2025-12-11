@@ -1,9 +1,11 @@
 name: QA Sandbox
 
 on:
-  push:
+  pull_request:
     branches:
       - qa
+    types:
+      - closed
 
 permissions:
   contents: read
@@ -11,10 +13,13 @@ permissions:
 jobs:
   lint:
     name: Python lint
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -33,6 +38,7 @@ jobs:
     name: Sandbox test (Ubuntu 24.04)
     runs-on: ubuntu-24.04
     needs: lint
+    if: github.event.pull_request.merged == true
     env:
       MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_USER: castit
@@ -41,6 +47,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Install system dependencies
         run: |
@@ -84,6 +92,7 @@ jobs:
     name: Sandbox test (Debian Bookworm)
     runs-on: ubuntu-24.04
     needs: lint
+    if: github.event.pull_request.merged == true
     container:
       image: debian:bookworm
     env:
@@ -100,6 +109,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Install system dependencies
         run: |
