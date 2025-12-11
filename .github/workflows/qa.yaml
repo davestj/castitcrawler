@@ -1,0 +1,151 @@
+name: QA Sandbox
+
+on:
+  pull_request:
+    branches:
+      - qa
+    types:
+      - closed
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Python lint
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install lint dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Run ruff
+        run: ruff check .
+
+  sandbox-ubuntu:
+    name: Sandbox test (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    needs: lint
+    if: github.event.pull_request.merged == true
+    env:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_USER: castit
+      MYSQL_PASSWORD: castitpass
+      MYSQL_DATABASE: castitcrawler
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server python3 python3-pip
+
+      - name: Configure MySQL
+        run: |
+          sudo service mysql start
+          sudo mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
+          sudo mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};"
+          sudo mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_PASSWORD}';"
+          sudo mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%'; FLUSH PRIVILEGES;"
+
+      - name: Apply schema
+        run: |
+          sudo mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} ${MYSQL_DATABASE} < castitcrawler_db.schema.sql
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests mysql-connector-python pyyaml beautifulsoup4
+
+      - name: Prepare runtime config
+        run: |
+          cat > config.yaml <<'CFG'
+          database:
+            user: ${MYSQL_USER}
+            password: ${MYSQL_PASSWORD}
+            host: 127.0.0.1
+            database: ${MYSQL_DATABASE}
+          CFG
+
+      - name: Run dry-run sandbox test
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python3 castitcrawler.py --dry-run --threads 4
+
+  sandbox-debian:
+    name: Sandbox test (Debian Bookworm)
+    runs-on: ubuntu-24.04
+    needs: lint
+    if: github.event.pull_request.merged == true
+    container:
+      image: debian:bookworm
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_USER: castit
+      MYSQL_PASSWORD: castitpass
+      MYSQL_DATABASE: castitcrawler
+    steps:
+      - name: Install prerequisites
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y mysql-server python3 python3-pip
+
+      - name: Configure MySQL
+        run: |
+          service mysql start
+          mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
+          mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};"
+          mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_PASSWORD}';"
+          mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}.* TO '${MYSQL_USER}'@'%'; FLUSH PRIVILEGES;"
+
+      - name: Apply schema
+        run: |
+          mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} ${MYSQL_DATABASE} < castitcrawler_db.schema.sql
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests mysql-connector-python pyyaml beautifulsoup4
+
+      - name: Prepare runtime config
+        run: |
+          cat > config.yaml <<'CFG'
+          database:
+            user: ${MYSQL_USER}
+            password: ${MYSQL_PASSWORD}
+            host: 127.0.0.1
+            database: ${MYSQL_DATABASE}
+          CFG
+
+      - name: Run dry-run sandbox test
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python3 castitcrawler.py --dry-run --threads 4
